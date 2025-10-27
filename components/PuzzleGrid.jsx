@@ -6,7 +6,8 @@ export default function PuzzleGrid({
   userAnswers, 
   onCellChange,
   correctAnswers,
-  answerHistory 
+  answerHistory,
+  isLocked 
 }) {
   return (
     <div className="inline-block border-2 border-gray-800 p-2 bg-gray-100">
@@ -26,6 +27,7 @@ export default function PuzzleGrid({
                 isBlack={isBlack}
                 correctAnswer={correctAnswers[cellId]}
                 answerHistory={answerHistory}
+                isLocked={isLocked}
               />
             );
           })}

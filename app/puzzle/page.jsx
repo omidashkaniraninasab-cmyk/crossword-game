@@ -8,21 +8,21 @@ import ScoreDisplay from '@/components/ScoreDisplay';
 export default function PuzzlePage() {
   const [puzzle, setPuzzle] = useState(null);
   const [userAnswers, setUserAnswers] = useState({});
-  const [answerHistory, setAnswerHistory] = useState({}); // تاریخچه پاسخ‌های هر سلول
+  const [answerHistory, setAnswerHistory] = useState({});
   const [totalScore, setTotalScore] = useState(0);
   const [loading, setLoading] = useState(true);
   const [timeSpent, setTimeSpent] = useState(0);
+  const [isPuzzleLocked, setIsPuzzleLocked] = useState(false);
+  const [showCongratulations, setShowCongratulations] = useState(false);
 
   useEffect(() => {
     loadTodayPuzzle();
   }, []);
 
   useEffect(() => {
-    // محاسبه امتیاز بر اساس تاریخچه
     calculateTotalScore();
   }, [answerHistory]);
 
-  // تایمر ساده برای صفحه
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeSpent(prev => prev + 1);
@@ -30,6 +30,15 @@ export default function PuzzlePage() {
 
     return () => clearInterval(timer);
   }, []);
+
+  // بررسی کامل شدن صحیح پازل
+  useEffect(() => {
+    if (isPuzzleComplete() && isAllCorrect() && !isPuzzleLocked) {
+      setIsPuzzleLocked(true);
+      submitFinalScore();
+      setShowCongratulations(true);
+    }
+  }, [userAnswers]);
 
   const loadTodayPuzzle = async () => {
     try {
@@ -56,20 +65,16 @@ export default function PuzzlePage() {
       let cellScore = 0;
       let hasCorrectAnswer = false;
 
-      // بررسی تاریخچه این سلول
       for (const answer of history) {
         if (answer === '') {
-          // پاک کردن - هیچ تاثیری ندارد
           continue;
         } else if (answer === correctAnswer) {
-          // اولین بار که پاسخ درست داده +۱۰
           if (!hasCorrectAnswer) {
             cellScore += 10;
             hasCorrectAnswer = true;
           }
-          break; // بعد از پاسخ درست، بقیه پاسخ‌ها مهم نیست
+          break;
         } else {
-          // پاسخ اشتباه -۵ (فقط اگر هنوز پاسخ درست نداده)
           if (!hasCorrectAnswer) {
             cellScore -= 5;
           }
@@ -79,19 +84,32 @@ export default function PuzzlePage() {
       score += cellScore;
     });
 
-    console.log('🎯 امتیاز کل محاسبه شد:', score);
     setTotalScore(Math.max(0, score));
   };
 
+  const isPuzzleComplete = () => {
+    if (!puzzle) return false;
+    const correctAnswers = puzzle.correct_answers;
+    const totalCells = Object.keys(correctAnswers).length;
+    const filledCells = Object.keys(userAnswers).length;
+    
+    return totalCells === filledCells;
+  };
+
+  const isAllCorrect = () => {
+    if (!puzzle) return false;
+    const correctAnswers = puzzle.correct_answers;
+    return Object.keys(userAnswers).every(cellId => 
+      userAnswers[cellId] === correctAnswers[cellId]
+    );
+  };
+
   const handleCellChange = (cellId, answer) => {
-    if (!puzzle) return;
+    if (!puzzle || isPuzzleLocked) return;
 
     const correctAnswers = puzzle.correct_answers;
     const correctAnswer = correctAnswers[cellId];
 
-    console.log('🔄 تغییر سلول:', cellId, 'پاسخ:', answer, 'صحیح:', correctAnswer);
-
-    // آپدیت userAnswers برای نمایش
     const newAnswers = { ...userAnswers };
     if (answer === '') {
       delete newAnswers[cellId];
@@ -100,59 +118,37 @@ export default function PuzzlePage() {
     }
     setUserAnswers(newAnswers);
 
-    // آپدیت تاریخچه پاسخ‌ها
     const newHistory = { ...answerHistory };
-    
     if (!newHistory[cellId]) {
       newHistory[cellId] = [];
     }
-    
-    // اضافه کردن پاسخ جدید به تاریخچه
     newHistory[cellId].push(answer);
     setAnswerHistory(newHistory);
-
-    console.log('📝 تاریخچه به‌روز شد:', newHistory[cellId]);
   };
 
-  // تابع برای ثبت امتیاز نهایی
   const submitFinalScore = async () => {
     try {
       const response = await fetch('/api/leaderboard/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: 1, // کاربر فعلی (test_user)
+          userId: 1,
           score: totalScore,
           timeSpent: timeSpent
         })
       });
 
       const result = await response.json();
-      if (result.success) {
-        alert(`🏆 امتیاز شما ثبت شد! \nامتیاز: ${totalScore} \nزمان: ${formatTime(timeSpent)}`);
-      }
+      console.log('امتیاز ثبت شد:', result);
     } catch (error) {
       console.error('خطا در ثبت امتیاز:', error);
-      alert('❌ خطا در ثبت امتیاز. لطفاً دوباره تلاش کنید.');
     }
   };
 
-  // تابع برای فرمت کردن زمان
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // تابع برای بررسی آیا همه سلول‌ها پر شده‌اند
-  const isPuzzleComplete = () => {
-    if (!puzzle) return false;
-    
-    const correctAnswers = puzzle.correct_answers;
-    const totalCells = Object.keys(correctAnswers).length;
-    const filledCells = Object.keys(userAnswers).length;
-    
-    return totalCells === filledCells;
   };
 
   if (loading) {
@@ -186,14 +182,14 @@ export default function PuzzlePage() {
             <ScoreDisplay score={totalScore} />
             <button 
               onClick={submitFinalScore}
-              disabled={!isPuzzleComplete()}
+              disabled={!isPuzzleComplete() || isPuzzleLocked}
               className={`px-4 py-2 rounded-lg font-bold transition-colors ${
-                isPuzzleComplete() 
+                isPuzzleComplete() && !isPuzzleLocked
                   ? 'bg-green-600 text-white hover:bg-green-700' 
                   : 'bg-gray-400 text-gray-200 cursor-not-allowed'
               }`}
             >
-              ثبت امتیاز
+              {isPuzzleLocked ? 'ثبت شده' : 'ثبت امتیاز'}
             </button>
           </div>
         </div>
@@ -206,6 +202,7 @@ export default function PuzzlePage() {
               onCellChange={handleCellChange}
               correctAnswers={puzzle.correct_answers}
               answerHistory={answerHistory}
+              isLocked={isPuzzleLocked}
             />
           </div>
 
@@ -247,33 +244,52 @@ export default function PuzzlePage() {
             
             <div className="text-center p-3 bg-yellow-50 rounded-lg">
               <div className="text-2xl font-bold text-yellow-600">
-                {isPuzzleComplete() ? '✅' : '⏳'}
+                {isPuzzleLocked ? '🔒' : (isPuzzleComplete() ? '✅' : '⏳')}
               </div>
               <div className="text-sm text-yellow-800">
-                {isPuzzleComplete() ? 'تکمیل شده' : 'در حال انجام'}
+                {isPuzzleLocked ? 'قفل شده' : (isPuzzleComplete() ? 'تکمیل شده' : 'در حال انجام')}
               </div>
             </div>
           </div>
 
-          {isPuzzleComplete() && (
+          {isPuzzleLocked && (
             <div className="mt-4 p-3 bg-green-100 border border-green-300 rounded-lg text-center">
               <span className="font-bold text-green-800">🎉 تبریک! شما پازل امروز را کامل کردید!</span>
             </div>
           )}
         </div>
 
-        {/* نمایش دیباگ */}
-        <div className="mt-4 p-4 bg-gray-100 rounded text-xs">
-          <details>
-            <summary className="cursor-pointer font-bold">اطلاعات دیباگ</summary>
-            <div className="mt-2 space-y-1">
-              <div>امتیاز کل: {totalScore}</div>
-              <div>تعداد سلول‌های پر: {Object.keys(userAnswers).length}</div>
-              <div>زمان سپری شده: {timeSpent} ثانیه</div>
-              <div>تاریخچه پاسخ‌ها: {JSON.stringify(answerHistory)}</div>
+        {/* پیام تبریک */}
+        {showCongratulations && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-8 max-w-md text-center">
+              <div className="text-6xl mb-4">🎉</div>
+              <h2 className="text-2xl font-bold text-green-600 mb-2">
+                تبریک می‌گم!
+              </h2>
+              <p className="text-gray-600 mb-4">
+                شما پازل امروز را با <strong>{totalScore} امتیاز</strong> کامل کردید!
+              </p>
+              <p className="text-sm text-gray-500 mb-6">
+                زمان: {formatTime(timeSpent)}
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <Link 
+                  href="/leaderboard" 
+                  className="bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  مشاهده جدول
+                </Link>
+                <button 
+                  onClick={() => setShowCongratulations(false)}
+                  className="bg-gray-500 text-white py-2 rounded-lg hover:bg-gray-600 transition-colors"
+                >
+                  ادامۀ بازی
+                </button>
+              </div>
             </div>
-          </details>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
