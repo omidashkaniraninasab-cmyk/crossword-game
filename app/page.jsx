@@ -284,34 +284,24 @@ export default function HomePage() {
 
             {/* آمار کاربر */}
             <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                📊 آمار من
-              </h2>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">رتبه امروز:</span>
-                  <span className="font-bold">
-                    {userStats?.dailyRank ? `#${userStats.dailyRank}` : '--'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">تعداد بازی:</span>
-                  <span className="font-bold">{userStats?.totalStats?.total_puzzles || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">میانگین امتیاز:</span>
-                  <span className="font-bold text-green-600">
-                    {Math.round(userStats?.totalStats?.avg_score) || 0}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">بهترین امتیاز:</span>
-                  <span className="font-bold text-yellow-600">
-                    {userStats?.totalStats?.best_score || 0}
-                  </span>
-                </div>
-              </div>
-            </div>
+  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+    📊 آمار من
+  </h2>
+  <div className="space-y-4">
+    <div className="flex justify-between items-center">
+      <span className="text-gray-600">مجموع امتیازها:</span>
+      <span className="font-bold text-2xl text-blue-600">
+        {userStats?.totalStats?.total_score || 0}
+      </span>
+    </div>
+    <div className="flex justify-between items-center">
+      <span className="text-gray-600">تعداد بازی‌ها:</span>
+      <span className="font-bold text-xl">
+        {userStats?.totalStats?.total_puzzles || 0}
+      </span>
+    </div>
+  </div>
+</div>
           </div>
         </div>
       </div>
