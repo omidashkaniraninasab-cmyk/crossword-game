@@ -15,10 +15,27 @@ export default function HomePage() {
   const [showCongratulations, setShowCongratulations] = useState(false);
   const [leaderboard, setLeaderboard] = useState([]);
   const [userStats, setUserStats] = useState(null);
+  
+  // stateهای جدید برای کاربران
+  const [currentUser, setCurrentUser] = useState(null);
+  const [showUserPanel, setShowUserPanel] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+  const [authForm, setAuthForm] = useState({
+    username: '',
+    email: '',
+    password: ''
+  });
 
   // بارگذاری همه داده‌ها
   useEffect(() => {
     loadAllData();
+    
+    // چک کردن کاربر ذخیره شده در localStorage
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+      setCurrentUser(JSON.parse(savedUser));
+    }
   }, []);
 
   useEffect(() => {
@@ -47,19 +64,25 @@ export default function HomePage() {
       setLoading(true);
       
       // بارگذاری موازی همه داده‌ها
-      const [puzzleRes, leaderboardRes, statsRes] = await Promise.all([
+      const [puzzleRes, leaderboardRes] = await Promise.all([
         fetch('/api/puzzle'),
-        fetch('/api/leaderboard?limit=5'),
-        fetch('/api/user/stats?userId=1')
+        fetch('/api/leaderboard?limit=5')
       ]);
 
       const puzzleData = await puzzleRes.json();
       const leaderboardData = await leaderboardRes.json();
-      const statsData = statsRes.ok ? await statsRes.json() : null;
 
       setPuzzle(puzzleData);
       setLeaderboard(leaderboardData.players || []);
-      setUserStats(statsData);
+      
+      // اگر کاربر لاگین کرده، آمارش رو بگیر
+      if (currentUser) {
+        const statsRes = await fetch(`/api/user/stats?userId=${currentUser.id}`);
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          setUserStats(statsData);
+        }
+      }
     } catch (error) {
       console.error('خطا در دریافت داده‌ها:', error);
     } finally {
@@ -127,12 +150,18 @@ export default function HomePage() {
   };
 
   const submitFinalScore = async () => {
+    if (!currentUser) {
+      alert('لطفاً اول وارد حساب کاربری خود شوید');
+      setShowAuthModal(true);
+      return;
+    }
+
     try {
       await fetch('/api/leaderboard/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: 1,
+          userId: currentUser.id,
           score: totalScore,
           timeSpent: timeSpent
         })
@@ -141,6 +170,48 @@ export default function HomePage() {
     } catch (error) {
       console.error('خطا در ثبت امتیاز:', error);
     }
+  };
+
+  const handleAuth = async () => {
+  // اعتبارسنجی اولیه
+  if (!authForm.username || !authForm.password) {
+    alert('لطفاً نام کاربری و رمز عبور را وارد کنید');
+    return;
+  }
+
+  if (authMode === 'register' && !authForm.email) {
+    alert('لطفاً ایمیل را وارد کنید');
+    return;
+  }
+
+  // حالت تست - تا زمانی که API رو نساختیم
+  try {
+    // شبیه‌سازی API call
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const testUser = {
+      id: Date.now(),
+      username: authForm.username,
+      email: authForm.email || `${authForm.username}@example.com`
+    };
+    
+    setCurrentUser(testUser);
+    localStorage.setItem('currentUser', JSON.stringify(testUser));
+    setShowAuthModal(false);
+    setAuthForm({ username: '', email: '', password: '' });
+    loadAllData();
+    
+    alert(`✅ ${authMode === 'login' ? 'ورود' : 'ثبت‌نام'} موفقیت‌آمیز بود!`);
+    
+  } catch (error) {
+    alert('خطا در ورود/ثبت‌نام. لطفاً دوباره تلاش کنید.');
+  }
+};
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setShowUserPanel(false);
+    localStorage.removeItem('currentUser');
+    setUserStats(null);
   };
 
   const formatTime = (seconds) => {
@@ -166,7 +237,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" onClick={() => showUserPanel && setShowUserPanel(false)}>
       {/* هدر */}
       <div className="bg-white shadow-sm border-b">
         <div className="container mx-auto px-4 py-3">
@@ -177,16 +248,76 @@ export default function HomePage() {
                 <span className="font-mono font-bold">{formatTime(timeSpent)}</span>
               </div>
               <ScoreDisplay score={totalScore} />
+              
+              {/* بخش کاربر */}
+              {currentUser ? (
+                <div className="relative">
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowUserPanel(!showUserPanel);
+                    }}
+                    className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100 transition-colors border border-blue-200"
+                  >
+                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                      {currentUser.username.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="font-medium hidden sm:block">{currentUser.username}</span>
+                    <span className="text-blue-600">▼</span>
+                  </button>
+
+                  {/* پنل کاربر */}
+                  {showUserPanel && (
+                    <div className="absolute top-12 right-0 w-64 bg-white border border-gray-200 rounded-lg shadow-xl z-50" onClick={(e) => e.stopPropagation()}>
+                      <div className="p-4 border-b border-gray-100 bg-blue-50 rounded-t-lg">
+                        <div className="font-bold text-gray-800">{currentUser.username}</div>
+                        <div className="text-sm text-gray-600 mt-1">{currentUser.email}</div>
+                      </div>
+                      
+                      <div className="p-4 space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-600">مجموع امتیاز:</span>
+                          <span className="font-bold text-lg text-blue-600">
+                            {userStats?.totalStats?.total_score || 0}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-600">تعداد بازی:</span>
+                          <span className="font-bold text-gray-800">{userStats?.totalStats?.total_puzzles || 0}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="p-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+                        <button 
+                          onClick={handleLogout}
+                          className="w-full text-left px-3 py-2 text-red-600 hover:bg-red-100 rounded transition-colors flex items-center gap-2"
+                        >
+                          <span>🔒</span>
+                          <span>خروج از حساب</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button 
+                  onClick={() => setShowAuthModal(true)}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-bold transition-colors"
+                >
+                  ورود / ثبت‌نام
+                </button>
+              )}
+
               <button 
                 onClick={submitFinalScore}
-                disabled={!isPuzzleComplete() || isPuzzleLocked}
+                disabled={!isPuzzleComplete() || isPuzzleLocked || !currentUser}
                 className={`px-4 py-2 rounded-lg font-bold transition-colors ${
-                  isPuzzleComplete() && !isPuzzleLocked
-                    ? 'bg-green-600 text-white hover:bg-green-700' 
+                  isPuzzleComplete() && !isPuzzleLocked && currentUser
+                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
                     : 'bg-gray-400 text-gray-200 cursor-not-allowed'
                 }`}
               >
-                {isPuzzleLocked ? '✅ ثبت شده' : 'ثبت امتیاز'}
+                {!currentUser ? 'ورود اول' : (isPuzzleLocked ? '✅ ثبت شده' : 'ثبت امتیاز')}
               </button>
             </div>
           </div>
@@ -263,7 +394,7 @@ export default function HomePage() {
               <div className="space-y-3">
                 {leaderboard.map((player, index) => (
                   <div key={player.user_id} className={`flex justify-between items-center p-2 rounded ${
-                    player.user_id === 1 ? 'bg-blue-50' : 'bg-gray-50'
+                    currentUser && player.user_id === currentUser.id ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
                   }`}>
                     <div className="flex items-center gap-2">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
@@ -275,6 +406,9 @@ export default function HomePage() {
                         {index + 1}
                       </span>
                       <span className="text-sm font-medium">{player.username}</span>
+                      {currentUser && player.user_id === currentUser.id && (
+                        <span className="text-xs bg-blue-500 text-white px-1 rounded">شما</span>
+                      )}
                     </div>
                     <span className="text-sm font-bold text-green-600">{player.score}</span>
                   </div>
@@ -283,28 +417,109 @@ export default function HomePage() {
             </div>
 
             {/* آمار کاربر */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-  <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-    📊 آمار من
-  </h2>
-  <div className="space-y-4">
-    <div className="flex justify-between items-center">
-      <span className="text-gray-600">مجموع امتیازها:</span>
-      <span className="font-bold text-2xl text-blue-600">
-        {userStats?.totalStats?.total_score || 0}
-      </span>
-    </div>
-    <div className="flex justify-between items-center">
-      <span className="text-gray-600">تعداد بازی‌ها:</span>
-      <span className="font-bold text-xl">
-        {userStats?.totalStats?.total_puzzles || 0}
-      </span>
-    </div>
-  </div>
-</div>
+            {currentUser && (
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  📊 آمار من
+                </h2>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">مجموع امتیازها:</span>
+                    <span className="font-bold text-2xl text-blue-600">
+                      {userStats?.totalStats?.total_score || 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">تعداد بازی‌ها:</span>
+                    <span className="font-bold text-xl">
+                      {userStats?.totalStats?.total_puzzles || 0}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {/* مودال ثبت‌نام/ورود */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-96">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">
+              {authMode === 'login' ? 'ورود به بازی' : 'ثبت‌نام در بازی'}
+            </h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  نام کاربری
+                </label>
+                <input
+                  type="text"
+                  value={authForm.username}
+                  onChange={(e) => setAuthForm({...authForm, username: e.target.value})}
+                  placeholder="نام کاربری خود را وارد کنید"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              {authMode === 'register' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    ایمیل
+                  </label>
+                  <input
+                    type="email"
+                    value={authForm.email}
+                    onChange={(e) => setAuthForm({...authForm, email: e.target.value})}
+                    placeholder="email@example.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  رمز عبور
+                </label>
+                <input
+                  type="password"
+                  value={authForm.password}
+                  onChange={(e) => setAuthForm({...authForm, password: e.target.value})}
+                  placeholder="رمز عبور"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 pt-4">
+                <button
+                  onClick={handleAuth}
+                  className="bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-bold transition-colors"
+                >
+                  {authMode === 'login' ? 'ورود' : 'ثبت‌نام'}
+                </button>
+                <button
+                  onClick={() => {
+                    setAuthMode(authMode === 'login' ? 'register' : 'login');
+                    setAuthForm({ username: '', email: '', password: '' });
+                  }}
+                  className="bg-gray-500 text-white py-3 rounded-lg hover:bg-gray-600 font-bold transition-colors"
+                >
+                  {authMode === 'login' ? 'ثبت‌نام' : 'ورود'}
+                </button>
+              </div>
+              
+              <button
+                onClick={() => setShowAuthModal(false)}
+                className="w-full text-gray-600 py-2 hover:text-gray-800 transition-colors"
+              >
+                انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* پیام تبریک */}
       {showCongratulations && (
